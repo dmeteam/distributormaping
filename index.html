@@ -166,47 +166,65 @@
       });
 
       select.addEventListener("change", () => {
-        const selected = select.value;
-        const filtered = selected === "ALL" ? distributorData : distributorData.filter(d => d.state === selected);
-        showDistributors(filtered);
-      });
+  const selected = select.value;
+  const filtered = selected === "ALL" ? distributorData : distributorData.filter(d => d.state === selected);
+  showDistributors(filtered);
+
+  // 🧹 Clear directions and UI
+  directionsRenderer.setDirections({ routes: [] });
+  document.getElementById("routeInfo").innerHTML = "";
+  document.getElementById("routeLocationDropdown").innerHTML = '<option value="">-- Cities on Route --</option>';
+  document.getElementById("sourceSelect").selectedIndex = 0;
+  document.getElementById("destinationInput").value = "";
+  document.getElementById("getDirectionBtn").disabled = true;
+
+  if (driverMarker) {
+    driverMarker.setMap(null);
+    driverMarker = null;
+  }
+});
+
     }
 
     function geocodeAndStoreStates(data) {
-      const geocoder = new google.maps.Geocoder();
-      let pending = data.length;
-      document.getElementById("loading").style.display = "block";
+  const geocoder = new google.maps.Geocoder();
+  let pending = data.length;
+  document.getElementById("loading").style.display = "block";
 
-      data.forEach(dist => {
-        geocoder.geocode({ address: dist.pincode + ", India" }, (results, status) => {
-          let actualState = "Unknown";
-          if (status === "OK" && results[0]) {
-            const comp = results[0].address_components;
-            const stateComp = comp.find(c => c.types.includes("administrative_area_level_1"));
-            actualState = stateComp ? stateComp.long_name : "Unknown";
+  data.forEach(dist => {
+    geocoder.geocode({ address: dist.pincode + ", India" }, (results, status) => {
+      let actualState = "Unknown";
+      if (status === "OK" && results[0]) {
+        const comp = results[0].address_components;
+        const stateComp = comp.find(c => c.types.includes("administrative_area_level_1"));
+        actualState = stateComp ? stateComp.long_name : "Unknown";
 
-            const loc = results[0].geometry.location;
-            dist.lat = loc.lat();
-            dist.lng = loc.lng();
+        const loc = results[0].geometry.location;
+        dist.lat = loc.lat();
+        dist.lng = loc.lng();
 
-            const datalist = document.getElementById("destinationList");
-            const opt = document.createElement("option");
-            opt.value = `${dist.name} (${dist.city})`;
-            datalist.appendChild(opt);
+        // ✅ FIX ADDED HERE
+        dist.state = actualState;
 
-            distributorData.push(dist);
-            stateSet.add(actualState);
-          }
+        const datalist = document.getElementById("destinationList");
+        const opt = document.createElement("option");
+        opt.value = `${dist.name} (${dist.city})`;
+        datalist.appendChild(opt);
 
-          pending--;
-          if (pending === 0) {
-            populateStateDropdown(stateSet);
-            showDistributors(distributorData);
-            document.getElementById("loading").style.display = "none";
-          }
-        });
-      });
-    }
+        distributorData.push(dist);
+        stateSet.add(actualState);
+      }
+
+      pending--;
+      if (pending === 0) {
+        populateStateDropdown(stateSet);
+        showDistributors(distributorData);
+        document.getElementById("loading").style.display = "none";
+      }
+    });
+  });
+}
+
 
     function showDistributors(data) {
       clearMarkers(distributorMarkers);
