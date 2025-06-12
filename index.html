@@ -1,64 +1,273 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Google Map Pincode Markers</title>
-    <style>
-      #map {
-        height: 100vh;
-        width: 100%;
-      }
-    </style>
-    <script>
-      let map;
-      const sheetCSVUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMJlYV4vp1-zqS_DdikTcmQ94A4pcqjBgjxYTIC2xFJjiILtfnvA0ujzGZIx1c3GX70rHsZPiBKM60/pub?gid=0&single=true&output=csv';
+<head>
+  <title>Custom Marker Map</title>
+  <style>
+    #map { height: 75vh; width: 100%; }
+    #controls { margin: 10px; font-size: 16px; }
+    select { margin-right: 10px; padding: 4px; font-size: 14px; }
+    #loading { font-weight: bold; color: #007bff; padding: 8px; display: none; }
+  </style>
+  <script>
+    let map;
+    let distributorMarkers = [];
+    let factoryMarkers = [];
+    let depoMarkers = [];
 
-      function initMap() {
-        map = new google.maps.Map(document.getElementById("map"), {
-          zoom: 5,
-          center: { lat: 23.2599, lng: 77.4126 }, // India center
+    const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMJlYV4vp1-zqS_DdikTcmQ94A4pcqjBgjxYTIC2xFJjiILtfnvA0ujzGZIx1c3GX70rHsZPiBKM60/pub?output=csv';
+
+    const factoryList = [
+      { name: "SHANTINATH DETERGENTS P LTD. (VARANASI)", lat: 25.24566385, lng: 83.07115823 },
+      { name: "SHANTINATH DETERGENTS P LTD. (AGP)", lat: 22.6799134, lng: 88.3741541 },
+      { name: "SHANTINATH DETERGENTS P LTD. (KMT)", lat: 22.67699723, lng: 88.36553496 },
+      { name: "SHANTINATH DETERGENTS PVT LTD. (GUWAHATI)", lat: 26.22951542, lng: 91.70482616 },
+      { name: "SHANTINATH DETERGENTS P LTD. (RJ)", lat: 27.51797021, lng: 76.68382105 }
+    ];
+
+    const depoList = [
+      { name: "SHANTINATH DETERGENTS P LTD. (OD)", lat: 20.53638642, lng: 85.92743106 },
+      { name: "SHANTINATH DETERGENTS P LTD. (BR)", lat: 25.60919845, lng: 85.17667886 },
+      { name: "SHANTINATH DETERGENTS P LTD. (JH)", lat: 23.30769322, lng: 85.3927433 }
+    ];
+
+    const headOffice = {
+      name: "SHANTINATH DETERGENTS P LTD. (WB)",
+      lat: 22.56703681,
+      lng: 88.35030675
+    };
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 23.2599, lng: 77.4126 },
+        zoom: 5,
+      });
+
+      showHeadOffice();
+      showAllFactories();
+      showAllDepos();
+      addFactoryDropdown();
+      addDepoDropdown();
+
+      fetch(csvUrl)
+        .then(response => response.text())
+        .then(csvText => {
+          const rows = csvText.trim().split('\n').slice(1);
+          const data = rows.map(row => {
+            const cols = row.split(",");
+            return {
+              city: cols[0]?.trim(),
+              name: cols[2]?.trim(),
+              pincode: cols[3]?.trim()
+            };
+          }).filter(d => /^\d{6}$/.test(d.pincode));
+
+          geocodeAndStoreStates(data);
         });
+    }
 
-        fetch(sheetCSVUrl)
-          .then(response => response.text())
-          .then(csvText => {
-            const rows = csvText.split("\n").slice(1); // skip header
-            const geocoder = new google.maps.Geocoder();
-            const bounds = new google.maps.LatLngBounds();
+    function clearMarkers(markerArray) {
+      markerArray.forEach(m => m.setMap(null));
+      markerArray.length = 0;
+    }
 
-            rows.forEach((row, i) => {
-              const columns = row.split(",");
-              const pincode = columns[3]?.trim(); // Column D = index 3
+    function populateStateDropdown(states) {
+      const select = document.getElementById("stateSelect");
+      select.innerHTML = '<option value="ALL">ALL States</option>';
+      [...states].sort().forEach(state => {
+        const opt = document.createElement("option");
+        opt.value = state;
+        opt.textContent = state;
+        select.appendChild(opt);
+      });
 
-              if (pincode && /^\d{6}$/.test(pincode)) {
-                geocoder.geocode({ address: pincode + ", India" }, (results, status) => {
-                  if (status === "OK") {
-                    const location = results[0].geometry.location;
-                    new google.maps.Marker({
-                      map: map,
-                      position: location,
-                      icon: {
-                        url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-                      },
-                    });
-                    bounds.extend(location);
-                    map.fitBounds(bounds);
-                  } else {
-                    console.warn("Geocode failed for: " + pincode + ", status: " + status);
-                  }
-                });
+      select.addEventListener("change", () => {
+        const selected = select.value;
+        const filtered = selected === "ALL"
+          ? distributorData
+          : distributorData.filter(d => d.state === selected);
+        showDistributors(filtered);
+      });
+    }
+
+    const stateSet = new Set();
+    let distributorData = [];
+
+    function geocodeAndStoreStates(data) {
+      const geocoder = new google.maps.Geocoder();
+      let pending = data.length;
+      document.getElementById("loading").style.display = "block";
+
+      data.forEach(dist => {
+        geocoder.geocode({ address: dist.pincode + ", India", region: "IN" }, (results, status) => {
+          let actualState = "Unknown";
+          if (status === "OK" && results[0]) {
+            const address = results[0].address_components;
+            const stateComp = address.find(c => c.types.includes("administrative_area_level_1"));
+            actualState = stateComp ? stateComp.long_name : "Unknown";
+          }
+
+          dist.state = actualState;
+          distributorData.push(dist);
+          stateSet.add(actualState);
+
+          pending--;
+          if (pending === 0) {
+            populateStateDropdown(stateSet);
+            showDistributors(distributorData);
+            document.getElementById("loading").style.display = "none";
+          }
+        });
+      });
+    }
+
+    function showDistributors(data) {
+      clearMarkers(distributorMarkers);
+      const geocoder = new google.maps.Geocoder();
+      let pending = data.length;
+      document.getElementById("loading").style.display = "block";
+
+      data.forEach(dist => {
+        geocoder.geocode({ address: dist.pincode + ", India", region: "IN" }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            const loc = results[0].geometry.location;
+            const marker = new google.maps.Marker({
+              map: map,
+              position: loc,
+              title: `${dist.name} (${dist.city})`,
+              icon: {
+                url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                scaledSize: new google.maps.Size(20, 20)
               }
             });
-          });
-      }
-    </script>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script
-      async
-      defer
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAt7njhzE43ZUPIjkHCSyX_iJ2UamrhK9I&callback=initMap"
-    ></script>
-  </body>
-</html>
+            distributorMarkers.push(marker);
+          }
 
+          if (--pending === 0) {
+            document.getElementById("loading").style.display = "none";
+          }
+        });
+      });
+    }
+
+    function showHeadOffice() {
+      new google.maps.Marker({
+        map: map,
+        position: { lat: headOffice.lat, lng: headOffice.lng },
+        title: headOffice.name,
+        icon: {
+          url: 'https://img.icons8.com/?size=100&id=39358&format=png&color=000000',
+          scaledSize: new google.maps.Size(50, 50)
+        }
+      });
+    }
+
+    function showAllFactories() {
+      factoryList.forEach(f => {
+        const marker = new google.maps.Marker({
+          map: map,
+          position: { lat: f.lat, lng: f.lng },
+          title: f.name,
+          icon: {
+            url: 'https://img.icons8.com/?size=100&id=43731&format=png&color=228BE6',
+            scaledSize: new google.maps.Size(40, 40)
+          }
+        });
+        factoryMarkers.push(marker);
+      });
+    }
+
+    function showAllDepos() {
+      depoList.forEach(d => {
+        const marker = new google.maps.Marker({
+          map: map,
+          position: { lat: d.lat, lng: d.lng },
+          title: d.name,
+          icon: {
+            url: 'https://img.icons8.com/?size=100&id=43731&format=png&color=12B886',
+            scaledSize: new google.maps.Size(40, 40)
+          }
+        });
+        depoMarkers.push(marker);
+      });
+    }
+
+    function addFactoryDropdown() {
+      const factorySelect = document.createElement("select");
+      factorySelect.id = "factorySelect";
+      factorySelect.innerHTML = `<option value="ALL">ALL Factories</option>`;
+      factoryList.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = f.name;
+        opt.textContent = f.name;
+        factorySelect.appendChild(opt);
+      });
+
+      factorySelect.addEventListener("change", () => {
+        const selected = factorySelect.value;
+        clearMarkers(factoryMarkers);
+        factoryList.forEach(f => {
+          if (selected === "ALL" || selected === f.name) {
+            const marker = new google.maps.Marker({
+              map: map,
+              position: { lat: f.lat, lng: f.lng },
+              title: f.name,
+              icon: {
+                url: 'https://img.icons8.com/?size=100&id=43731&format=png&color=228BE6',
+                scaledSize: new google.maps.Size(40, 40)
+              }
+            });
+            factoryMarkers.push(marker);
+          }
+        });
+      });
+
+      document.getElementById("controls").appendChild(factorySelect);
+    }
+
+    function addDepoDropdown() {
+      const depoSelect = document.createElement("select");
+      depoSelect.id = "depoSelect";
+      depoSelect.innerHTML = `<option value="ALL">ALL Depots</option>`;
+      depoList.forEach(d => {
+        const opt = document.createElement("option");
+        opt.value = d.name;
+        opt.textContent = d.name;
+        depoSelect.appendChild(opt);
+      });
+
+      depoSelect.addEventListener("change", () => {
+        const selected = depoSelect.value;
+        clearMarkers(depoMarkers);
+        depoList.forEach(d => {
+          if (selected === "ALL" || selected === d.name) {
+            const marker = new google.maps.Marker({
+              map: map,
+              position: { lat: d.lat, lng: d.lng },
+              title: d.name,
+              icon: {
+                url: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png',
+                scaledSize: new google.maps.Size(50, 50)
+              }
+            });
+            depoMarkers.push(marker);
+          }
+        });
+      });
+
+      document.getElementById("controls").appendChild(depoSelect);
+    }
+  </script>
+</head>
+<body>
+  <div id="controls">
+    <label><strong>Select State:</strong></label>
+    <select id="stateSelect"></select>
+    <div id="loading">Loading map pins, please wait...</div>
+  </div>
+  <div id="map"></div>
+
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAt7njhzE43ZUPIjkHCSyX_iJ2UamrhK9I&callback=initMap">
+  </script>
+</body>
+</html>
