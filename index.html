@@ -109,7 +109,7 @@
       const srcSel = document.getElementById("sourceSelect");
       factoryList.concat(depoList).forEach(loc => {
         const opt = document.createElement("option");
-        opt.value = `${loc.lat},${loc.lng}`;
+        opt.value = ${loc.lat},${loc.lng};
         opt.textContent = loc.name;
         srcSel.appendChild(opt);
       });
@@ -208,7 +208,7 @@
 
         const datalist = document.getElementById("destinationList");
         const opt = document.createElement("option");
-        opt.value = `${dist.name} (${dist.city})`;
+        opt.value = ${dist.name} (${dist.city});
         datalist.appendChild(opt);
 
         distributorData.push(dist);
@@ -233,7 +233,7 @@
           const marker = new google.maps.Marker({
             map,
             position: { lat: dist.lat, lng: dist.lng },
-            title: `${dist.name} (${dist.city})`,
+            title: ${dist.name} (${dist.city}),
             icon: {
               url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
               scaledSize: new google.maps.Size(20, 20)
@@ -288,7 +288,7 @@
 
     function addFactoryDropdown() {
       const factorySelect = document.createElement("select");
-      factorySelect.innerHTML = `<option value="ALL">ALL Factories</option>`;
+      factorySelect.innerHTML = <option value="ALL">ALL Factories</option>;
       factoryList.forEach(f => {
         const opt = document.createElement("option");
         opt.value = f.name;
@@ -320,7 +320,7 @@
 
     function addDepoDropdown() {
       const depoSelect = document.createElement("select");
-      depoSelect.innerHTML = `<option value="ALL">ALL Depots</option>`;
+      depoSelect.innerHTML = <option value="ALL">ALL Depots</option>;
       depoList.forEach(d => {
         const opt = document.createElement("option");
         opt.value = d.name;
@@ -349,16 +349,29 @@
 
       document.getElementById("controls").appendChild(depoSelect);
     }
+    function clearRouteAndInputs() {
+  directionsRenderer.setDirections({ routes: [] });
+  document.getElementById("routeInfo").innerHTML = "";
+  document.getElementById("routeLocationDropdown").innerHTML = '<option value="">-- Cities on Route --</option>';
+  document.getElementById("sourceSelect").selectedIndex = 0;
+  document.getElementById("destinationInput").value = "";
+  document.getElementById("getDirectionBtn").disabled = true;
+
+  if (driverMarker) {
+    driverMarker.setMap(null);
+    driverMarker = null;
+  }
+}
 
     function showRoute() {
       clearMarkers(distributorMarkers);
       clearMarkers(factoryMarkers);
       clearMarkers(depoMarkers);
-      
+     
       
       const srcText = document.getElementById("sourceSelect").selectedOptions[0].text;
       const destInput = document.getElementById("destinationInput").value;
-      const match = distributorData.find(d => `${d.name} (${d.city})` === destInput);
+      const match = distributorData.find(d => ${d.name} (${d.city}) === destInput);
       if (!match) return alert("Please select a valid destination from suggestions.");
 
       const [srcLat, srcLng] = document.getElementById("sourceSelect").value.split(",");
@@ -373,17 +386,17 @@
           directionsRenderer.setDirections(result);
           const leg = result.routes[0].legs[0];
           document.getElementById("routeInfo").innerHTML =
-            `<strong>Distance:</strong> ${leg.distance.text}, <strong>Duration:</strong> ${leg.duration.text}`;
-
+            <strong>Distance:</strong> ${leg.distance.text}, <strong>Duration:</strong> ${leg.duration.text};
+    
           new google.maps.Marker({
             map,
             position: leg.start_location,
-            title: `Source: ${srcText}`,
+            title: Source: ${srcText},
             icon: {
               url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
             },
             label: {
-              text: ` ${srcText}`,
+              text:  ${srcText},
               color: "black",
               fontSize: "12px",
               fontWeight: "bold"
@@ -393,12 +406,12 @@
           new google.maps.Marker({
             map,
             position: leg.end_location,
-            title: `Destination: ${match.name}`,
+            title: Destination: ${match.name},
             icon: {
               url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
             },
             label: {
-              text: ` ${match.name}`,
+              text:  ${match.name},
               color: "black",
               fontSize: "12px",
               fontWeight: "bold"
